@@ -1,16 +1,18 @@
 package org.example.app
 
-import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.database.Cursor
 import android.net.Uri
 import android.os.Bundle
+import android.provider.OpenableColumns
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.ListView
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -19,13 +21,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.example.app.stt.ModelManager
 
-/**
- * PUBLIC_INTERFACE
- * MainActivity is the single-activity entry point that sets up the Ocean Professional themed UI
- * with actions to import a model, select a video, and start processing.
- * Implements model import via SAF (zip or directory) into app-internal storage.
- */
-class MainActivity : Activity() {
+class MainActivity : AppCompatActivity() {
+
+    companion object {
+        private const val STATE_SELECTED_VIDEO_URI = "state_selected_video_uri"
+        private const val REQ_OPEN_DOCUMENT = 1001
+        private const val REQ_OPEN_DOCUMENT_TREE = 1002
+        private const val REQ_OPEN_VIDEO = 2001
+    }
 
     private lateinit var btnImportModel: Button
     private lateinit var btnSelectVideo: Button
@@ -35,28 +38,19 @@ class MainActivity : Activity() {
     private lateinit var lvStatus: ListView
     private lateinit var progress: ProgressBar
 
-    // In-memory flags for enabling the Start button
-    private var modelSelected: Boolean = false
-    private var videoSelected: Boolean = false
+    private var modelSelected = false
+    private var videoSelected = false
+    private var selectedVideoUri: Uri? = null
 
-    // List adapter
-    private lateinit var statusAdapter: ArrayAdapter<String>
     private val statusItems = mutableListOf<String>()
+    private lateinit var statusAdapter: ArrayAdapter<String>
 
-    // Coroutines
     private val uiScope = CoroutineScope(Dispatchers.Main + Job())
-
-    // Legacy request codes for Activity-based result handling
-    private val REQ_OPEN_DOCUMENT = 1001
-    private val REQ_OPEN_DOCUMENT_TREE = 1002
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        // Apply layout
         setContentView(R.layout.activity_main)
 
-        // Initialize views
         btnImportModel = findViewById(R.id.btnImportModel)
         btnSelectVideo = findViewById(R.id.btnSelectVideo)
         btnStartProcessing = findViewById(R.id.btnStartProcessing)
@@ -65,31 +59,24 @@ class MainActivity : Activity() {
         lvStatus = findViewById(R.id.lvStatus)
         progress = findViewById(R.id.progress)
 
-        // Setup ListView adapter
         statusAdapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, statusItems)
         lvStatus.adapter = statusAdapter
 
-        // Handlers
-        btnImportModel.setOnClickListener {
-            showModelPicker()
-        }
-
-        btnSelectVideo.setOnClickListener {
-            // TODO: Implement video selection (file picker) in subsequent step
+        val restored = savedInstanceState?.getString(STATE_SELECTED_VIDEO_URI)
+        if (!restored.isNullOrEmpty()) {
+            selectedVideoUri = Uri.parse(restored)
             videoSelected = true
-            tvVideoStatus.text = getString(R.string.label_selected_video, "example-video.mp4")
-            addStatus("Video selected: example-video.mp4")
-            updateStartButtonState()
+            val display = queryDisplayName(selectedVideoUri) ?: restored
+            tvVideoStatus.text = getString(R.string.label_selected_video, display)
         }
 
+        btnImportModel.setOnClickListener { showModelPicker() }
+        btnSelectVideo.setOnClickListener { showVideoPicker() }
         btnStartProcessing.setOnClickListener {
-            // TODO: Trigger processing: extract audio, transcribe offline, generate SRT
             progress.isVisible = true
             addStatus("Processing started…")
-            // TODO: Once processing completes or fails, hide progress and update status list
         }
 
-        // Check existing model on startup
         uiScope.launch {
             progress.isVisible = true
             val hasModel = ModelManager.hasValidModel(this@MainActivity)
@@ -104,60 +91,88 @@ class MainActivity : Activity() {
             updateStartButtonState()
         }
 
-        // Ensure start button is disabled initially until both selections are made
         updateStartButtonState()
     }
 
     private fun showModelPicker() {
-        // First try ACTION_OPEN_DOCUMENT to pick a .zip (or any file if mime is misreported)
         try {
-            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            val open = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                 addCategory(Intent.CATEGORY_OPENABLE)
                 type = "*/*"
-                // Optionally hint for zip
-                putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream", "*/*"))
+                putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/zip","application/x-zip-compressed","application/octet-stream","*/*"))
             }
-            startActivityForResult(intent, REQ_OPEN_DOCUMENT)
-        } catch (e: ActivityNotFoundException) {
-            // Fallback to OpenDocumentTree for directory
+            startActivityForResult(open, REQ_OPEN_DOCUMENT)
+        } catch (_: ActivityNotFoundException) {
             try {
-                val treeIntent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
-                startActivityForResult(treeIntent, REQ_OPEN_DOCUMENT_TREE)
+                val tree = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+                startActivityForResult(tree, REQ_OPEN_DOCUMENT_TREE)
             } catch (_: Exception) {
                 Toast.makeText(this, getString(R.string.err_no_file_picker), Toast.LENGTH_LONG).show()
             }
         }
     }
 
+    private fun showVideoPicker() {
+        try {
+            val open = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "video/*"
+            }
+            startActivityForResult(open, REQ_OPEN_VIDEO)
+        } catch (_: ActivityNotFoundException) {
+            Toast.makeText(this, getString(R.string.err_no_file_picker), Toast.LENGTH_LONG).show()
+        }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        selectedVideoUri?.let { outState.putString(STATE_SELECTED_VIDEO_URI, it.toString()) }
+    }
+
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (resultCode != Activity.RESULT_OK) return
+        if (resultCode != RESULT_OK) return
         when (requestCode) {
             REQ_OPEN_DOCUMENT -> {
-                val uri: Uri? = data?.data
-                if (uri != null) {
-                    // Persist temporary read permission on returned URI
-                    contentResolver.takePersistableUriPermissionSafe(uri)
-                    importModelFromUri(uri, persist = true)
-                }
+                val uri = data?.data ?: return
+                contentResolverSafeTakePersist(uri)
+                importModelFromUri(uri, true)
             }
             REQ_OPEN_DOCUMENT_TREE -> {
-                val uri: Uri? = data?.data
-                if (uri != null) {
-                    contentResolver.takePersistableUriPermissionSafe(uri)
-                    importModelFromUri(uri, persist = true)
-                }
+                val uri = data?.data ?: return
+                contentResolverSafeTakePersist(uri)
+                importModelFromUri(uri, true)
+            }
+            REQ_OPEN_VIDEO -> {
+                val uri = data?.data ?: return
+                contentResolverSafeTakePersist(uri)
+                selectedVideoUri = uri
+                videoSelected = true
+                val display = queryDisplayName(uri) ?: uri.toString()
+                tvVideoStatus.text = getString(R.string.label_selected_video, display)
+                addStatus(getString(R.string.status_video_selected, display, uri.toString()))
+                updateStartButtonState()
             }
         }
     }
 
-    private fun android.content.ContentResolver.takePersistableUriPermissionSafe(uri: Uri) {
+    private fun contentResolverSafeTakePersist(uri: Uri) {
         try {
-            takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
         } catch (_: SecurityException) {
-            // ignore
         } catch (_: IllegalArgumentException) {
-            // ignore
+        }
+    }
+
+    private fun queryDisplayName(uri: Uri?): String? {
+        if (uri == null) return null
+        return try {
+            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c: Cursor ->
+                val idx = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (idx >= 0 && c.moveToFirst()) c.getString(idx) else null
+            }
+        } catch (_: Exception) {
+            null
         }
     }
 
@@ -182,17 +197,11 @@ class MainActivity : Activity() {
         }
     }
 
-
-
     private fun addStatus(message: String) {
         statusItems.add(message)
         statusAdapter.notifyDataSetChanged()
     }
 
-    // PUBLIC_INTERFACE
-    /**
-     * Updates the enabled state of the Start Processing button based on selections.
-     */
     private fun updateStartButtonState() {
         btnStartProcessing.isEnabled = modelSelected && videoSelected
     }

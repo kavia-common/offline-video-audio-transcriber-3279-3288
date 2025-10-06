@@ -19,7 +19,7 @@
 
         <!-- Main activity must declare exported when intent-filters are present (targetSdk 31+). -->
         <activity
-            android:name=".MainActivity"
+            android:name="org.example.app.MainActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -27,18 +27,12 @@
             </intent-filter>
         </activity>
 
-        <!-- WorkManager's foreground service is typically auto-declared by the library.
-             Keep explicit declaration for broader compatibility with various templates/devices. -->
-        <!-- WorkManager system foreground service is auto-managed by the library; no explicit declaration needed. -->
-
-        <!-- Optional: metadata for a default notification channel used by foreground workers.
-             Workers can also create channels programmatically if this is not used. -->
+        <!-- Optional: metadata for a default notification channel used by foreground workers. -->
         <meta-data
             android:name="workmanager.default_notification_channel_id"
             android:value="work_fg_channel" />
 
-        <!-- Optional: FileProvider for sharing output files (e.g., WAV/SRT) later without exposing broad storage.
-             Keep enabled now for future use; authorities must be unique and include applicationId. -->
+        <!-- Optional: FileProvider for sharing output files (e.g., WAV/SRT) later without exposing broad storage. -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

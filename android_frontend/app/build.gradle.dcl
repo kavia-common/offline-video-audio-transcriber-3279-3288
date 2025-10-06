@@ -5,6 +5,9 @@ androidApplication {
         implementation("org.apache.commons:commons-text:1.11.0")
         implementation(project(":utilities"))
 
+        // AndroidX AppCompat for AppCompatActivity
+        implementation("androidx.appcompat:appcompat:1.7.0")
+
         // AndroidX Core for FileProvider and modern core utilities
         implementation("androidx.core:core-ktx:1.13.1")
 
@@ -17,7 +20,7 @@ androidApplication {
         // RecyclerView for future status adapter (optional but added to enable upcoming steps)
         implementation("androidx.recyclerview:recyclerview:1.3.2")
 
-        // Material Components (only used if theme/widgets require it; safe to include for compatibility)
+        // Material Components
         implementation("com.google.android.material:material:1.12.0")
 
         // Vosk offline speech-to-text engine (Android bindings from AlphaCephei Maven)
