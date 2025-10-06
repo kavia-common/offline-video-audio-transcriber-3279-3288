@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Base application theme using platform theme to avoid external dependencies -->
+    <style name="Theme.OceanProfessional" parent="@android:style/Theme.Holo.Light.NoActionBar">
+        <item name="android:colorBackground">@color/colorBackground</item>
+        <item name="android:textColor">@color/colorOnSurface</item>
+    </style>
+
+    <!-- Simple widget styles -->
+    <style name="Widget.Ocean.Button" parent="@android:style/Widget.Button">
+        <item name="android:textAllCaps">false</item>
+        <item name="android:paddingLeft">16dp</item>
+        <item name="android:paddingRight">16dp</item>
+    </style>
+
+    <!-- Text appearances for status lines -->
+    <style name="TextAppearance.Ocean.Status.Info" parent="@android:style/TextAppearance.Small">
+        <item name="android:textColor">@color/statusInfo</item>
+    </style>
+
+    <style name="TextAppearance.Ocean.Status.Success" parent="@android:style/TextAppearance.Small">
+        <item name="android:textColor">@color/statusSuccess</item>
+    </style>
+
+    <style name="TextAppearance.Ocean.Status.Error" parent="@android:style/TextAppearance.Small">
+        <item name="android:textColor">@color/statusError</item>
+    </style>
+
+</resources>

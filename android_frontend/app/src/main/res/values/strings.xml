@@ -1,0 +1,18 @@
+<resources>
+    <string name="app_name">Offline Video Subtitle Maker</string>
+
+    <!-- Buttons -->
+    <string name="btn_import_model">Import Model</string>
+    <string name="btn_select_video">Select Video</string>
+    <string name="btn_start_processing">Start Processing</string>
+
+    <!-- Labels / Status -->
+    <string name="label_selected_model">Model: %1$s</string>
+    <string name="label_selected_video">Video: %1$s</string>
+    <string name="label_no_model">Model: Not selected</string>
+    <string name="label_no_video">Video: Not selected</string>
+    <string name="label_status_header">Processing Status</string>
+
+    <!-- Content descriptions -->
+    <string name="cd_progress">Background processing in progress</string>
+</resources>

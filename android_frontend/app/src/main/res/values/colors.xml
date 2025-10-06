@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Ocean Professional Theme Colors -->
+    <color name="colorPrimary">#2563EB</color>
+    <color name="colorPrimaryVariant">#1E40AF</color>
+    <color name="colorSecondary">#F59E0B</color>
+    <color name="colorSecondaryVariant">#B45309</color>
+    <color name="colorError">#EF4444</color>
+
+    <color name="colorBackground">#f9fafb</color>
+    <color name="colorSurface">#ffffff</color>
+    <color name="colorOnPrimary">#FFFFFF</color>
+    <color name="colorOnSecondary">#111827</color>
+    <color name="colorOnError">#FFFFFF</color>
+    <color name="colorOnBackground">#111827</color>
+    <color name="colorOnSurface">#111827</color>
+
+    <!-- Status colors -->
+    <color name="statusInfo">#2563EB</color>
+    <color name="statusSuccess">#F59E0B</color>
+    <color name="statusError">#EF4444</color>
+
+    <!-- Neutrals / shadows -->
+    <color name="shadowColor">#1A000000</color>
+    <color name="ripplePrimary">#332563EB</color>
+    <color name="rippleSecondary">#33F59E0B</color>
+</resources>
