@@ -1,0 +1,4 @@
+{
+    "command": "./gradlew installDebug",
+    "working_directory": "/home/kavia/workspace/code-generation/offline-video-audio-transcriber-3279-3288/android_frontend"
+}
