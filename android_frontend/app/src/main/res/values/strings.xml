@@ -15,4 +15,8 @@
 
     <!-- Content descriptions -->
     <string name="cd_progress">Background processing in progress</string>
+
+    <!-- Foreground worker notification channel strings -->
+    <string name="work_fg_channel_name">Background Processing</string>
+    <string name="work_fg_channel_desc">Notifications for ongoing media processing tasks</string>
 </resources>
