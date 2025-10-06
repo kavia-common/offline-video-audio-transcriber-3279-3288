@@ -16,5 +16,5 @@
         android:textColor="@color/colorOnSurface"
         android:textSize="14sp"
         android:ellipsize="end"
-        android:maxLines="2" />
+        android:maxLines="3" />
 </LinearLayout>

@@ -6,7 +6,6 @@ import android.database.Cursor
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
-import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.ListView
 import android.widget.ProgressBar
@@ -14,12 +13,21 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
+import androidx.lifecycle.Observer
+import androidx.work.Data
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.example.app.stt.ModelManager
+import org.example.app.ui.StatusAdapter
+import org.example.app.work.TranscriptionWorker
+import java.util.UUID
 
 class MainActivity : AppCompatActivity() {
 
@@ -42,10 +50,12 @@ class MainActivity : AppCompatActivity() {
     private var videoSelected = false
     private var selectedVideoUri: Uri? = null
 
-    private val statusItems = mutableListOf<String>()
-    private lateinit var statusAdapter: ArrayAdapter<String>
+    private lateinit var statusAdapter: StatusAdapter
 
     private val uiScope = CoroutineScope(Dispatchers.Main + Job())
+
+    private var currentWorkId: UUID? = null
+    private var currentObserver: Observer<WorkInfo>? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -59,7 +69,7 @@ class MainActivity : AppCompatActivity() {
         lvStatus = findViewById(R.id.lvStatus)
         progress = findViewById(R.id.progress)
 
-        statusAdapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, statusItems)
+        statusAdapter = StatusAdapter(this)
         lvStatus.adapter = statusAdapter
 
         val restored = savedInstanceState?.getString(STATE_SELECTED_VIDEO_URI)
@@ -72,10 +82,7 @@ class MainActivity : AppCompatActivity() {
 
         btnImportModel.setOnClickListener { showModelPicker() }
         btnSelectVideo.setOnClickListener { showVideoPicker() }
-        btnStartProcessing.setOnClickListener {
-            progress.isVisible = true
-            addStatus("Processing started…")
-        }
+        btnStartProcessing.setOnClickListener { startTranscriptionWork() }
 
         uiScope.launch {
             progress.isVisible = true
@@ -92,6 +99,107 @@ class MainActivity : AppCompatActivity() {
         }
 
         updateStartButtonState()
+    }
+
+    private fun startTranscriptionWork() {
+        val uri = selectedVideoUri
+        if (uri == null) {
+            Toast.makeText(this, "Please select a video.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        // Clear previous observer if any
+        clearCurrentObserver()
+
+        // Reset UI
+        statusAdapter.clear()
+        statusAdapter.addInfo("Processing started…")
+        progress.isVisible = true
+        btnStartProcessing.isEnabled = false
+
+        // Build Data for worker
+        val input: Data = Data.Builder()
+            .putString(TranscriptionWorker.KEY_INPUT_VIDEO_URI, uri.toString())
+            .build()
+
+        // Build OneTimeWorkRequest
+        val req = OneTimeWorkRequestBuilder<TranscriptionWorker>()
+            .setInputData(input)
+            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+            .build()
+
+        currentWorkId = req.id
+
+        // Enqueue
+        WorkManager.getInstance(this).enqueue(req)
+
+        // Observe progress and state
+        val liveData = WorkManager.getInstance(this).getWorkInfoByIdLiveData(req.id)
+        val observer = Observer<WorkInfo> { info ->
+            if (info == null) return@Observer
+
+            // Update progress if available
+            val progressData = info.progress
+            val stage = progressData.getString(TranscriptionWorker.PROGRESS_STAGE)
+            val message = progressData.getString(TranscriptionWorker.PROGRESS_MESSAGE)
+            val percent = progressData.getInt(TranscriptionWorker.PROGRESS_PERCENT, -1)
+
+            if (!message.isNullOrBlank()) {
+                val display = if (percent in 0..100) "$message ($percent%)" else message
+                statusAdapter.addInfo(display)
+            }
+
+            when (info.state) {
+                WorkInfo.State.SUCCEEDED -> {
+                    progress.isVisible = false
+                    val output = info.outputData
+                    val wav = output.getString(TranscriptionWorker.KEY_OUTPUT_WAV_PATH)
+                    val srt = output.getString(TranscriptionWorker.KEY_OUTPUT_SRT_PATH)
+
+                    if (!wav.isNullOrBlank()) {
+                        statusAdapter.addSuccess("WAV saved: $wav")
+                    }
+                    if (!srt.isNullOrBlank()) {
+                        statusAdapter.addSuccess("SRT saved: $srt")
+                    }
+                    statusAdapter.addSuccess("Completed successfully.")
+                    updateStartButtonState()
+                    clearCurrentObserver()
+                }
+                WorkInfo.State.FAILED -> {
+                    progress.isVisible = false
+                    val msg = info.outputData.getString("message") ?: "Unknown error"
+                    statusAdapter.addError("Failed: $msg")
+                    Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+                    // Allow retry if prerequisites are still met
+                    updateStartButtonState()
+                    clearCurrentObserver()
+                }
+                WorkInfo.State.CANCELLED -> {
+                    progress.isVisible = false
+                    statusAdapter.addError("Cancelled")
+                    updateStartButtonState()
+                    clearCurrentObserver()
+                }
+                WorkInfo.State.ENQUEUED,
+                WorkInfo.State.RUNNING,
+                WorkInfo.State.BLOCKED -> {
+                    // keep showing progress
+                    progress.isVisible = true
+                }
+            }
+        }
+        liveData.observe(this, observer)
+        currentObserver = observer
+    }
+
+    private fun clearCurrentObserver() {
+        currentWorkId?.let { id ->
+            currentObserver?.let { obs ->
+                WorkManager.getInstance(this).getWorkInfoByIdLiveData(id).removeObserver(obs)
+            }
+        }
+        currentWorkId = null
+        currentObserver = null
     }
 
     private fun showModelPicker() {
@@ -150,7 +258,7 @@ class MainActivity : AppCompatActivity() {
                 videoSelected = true
                 val display = queryDisplayName(uri) ?: uri.toString()
                 tvVideoStatus.text = getString(R.string.label_selected_video, display)
-                addStatus(getString(R.string.status_video_selected, display, uri.toString()))
+                statusAdapter.addInfo(getString(R.string.status_video_selected, display, uri.toString()))
                 updateStartButtonState()
             }
         }
@@ -178,7 +286,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun importModelFromUri(uri: Uri, persist: Boolean) {
         progress.isVisible = true
-        addStatus(getString(R.string.status_import_started))
+        statusAdapter.addInfo(getString(R.string.status_import_started))
         uiScope.launch {
             try {
                 val modelName = withContext(Dispatchers.IO) {
@@ -186,9 +294,9 @@ class MainActivity : AppCompatActivity() {
                 }
                 modelSelected = true
                 tvModelStatus.text = getString(R.string.label_selected_model, modelName)
-                addStatus(getString(R.string.status_import_success, modelName))
+                statusAdapter.addSuccess(getString(R.string.status_import_success, modelName))
             } catch (ex: Exception) {
-                addStatus(getString(R.string.status_import_error, ex.message ?: "Unknown error"))
+                statusAdapter.addError(getString(R.string.status_import_error, ex.message ?: "Unknown error"))
                 Toast.makeText(this@MainActivity, getString(R.string.toast_import_failed), Toast.LENGTH_LONG).show()
             } finally {
                 progress.isVisible = false
@@ -197,12 +305,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun addStatus(message: String) {
-        statusItems.add(message)
-        statusAdapter.notifyDataSetChanged()
-    }
-
     private fun updateStartButtonState() {
         btnStartProcessing.isEnabled = modelSelected && videoSelected
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        clearCurrentObserver()
     }
 }
